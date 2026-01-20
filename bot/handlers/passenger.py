@@ -10,10 +10,9 @@ from bot.config import ROLE_PASSENGER
 from bot.geocoding import reverse_geocode
 from bot.keyboards import (
     cancel_order_keyboard,
-    comment_request_keyboard,
     confirm_order_keyboard,
-    location_request_keyboard,
     main_passenger_keyboard,
+    passenger_order_keyboard,
 )
 from bot.states import OrderStates
 
@@ -56,7 +55,7 @@ async def order_start(msg: Message, state: FSMContext) -> None:
         "Нажмите кнопку ниже. В открывшейся карте можно:\n"
         "• выбрать точку на карте\n"
         "• или отправить текущее местоположение",
-        reply_markup=location_request_keyboard(show_change_from=False),
+        reply_markup=passenger_order_keyboard("from_location"),
     )
 
 
@@ -101,7 +100,7 @@ async def order_from_location(msg: Message, state: FSMContext) -> None:
         "📍 Точка назначения (куда ехать)\n\n"
         "Нажмите кнопку и в карте выберите точку или отправьте своё местоположение.\n"
         "Если ошиблись с «откуда» — нажмите «Изменить «откуда»».",
-        reply_markup=location_request_keyboard(show_change_from=True),
+        reply_markup=passenger_order_keyboard("to_location"),
     )
 
 
@@ -117,7 +116,7 @@ async def order_to_location_change_from(msg: Message, state: FSMContext) -> None
     await msg.answer(
         "↩️ Выберите точку отправления заново:\n\n"
         "Нажмите кнопку — в карте выберите точку или отправьте текущее местоположение.",
-        reply_markup=location_request_keyboard(show_change_from=False),
+        reply_markup=passenger_order_keyboard("from_location"),
     )
 
 
@@ -137,7 +136,7 @@ async def order_to_location(msg: Message, state: FSMContext) -> None:
     await state.set_state(OrderStates.comment)
     await msg.answer(
         "💬 Комментарий к заказу (или нажмите «Пропустить»):",
-        reply_markup=comment_request_keyboard(),
+        reply_markup=passenger_order_keyboard("comment"),
     )
 
 
@@ -174,9 +173,11 @@ async def _order_confirm(target, state: FSMContext, *, is_callback: bool, cb: Ca
     await state.set_state(OrderStates.confirm)
     if is_callback and cb:
         await cb.message.edit_text(text, reply_markup=confirm_order_keyboard())
+        await cb.message.answer("⬇️ Меню", reply_markup=main_passenger_keyboard())
         await cb.answer()
     else:
         await target.answer(text, reply_markup=confirm_order_keyboard())
+        await target.answer("⬇️ Меню", reply_markup=main_passenger_keyboard())
 
 
 @router.callback_query(F.data == "change_points", StateFilter(OrderStates.confirm))
@@ -187,7 +188,7 @@ async def order_confirm_change_points(cb: CallbackQuery, state: FSMContext) -> N
     await cb.message.answer(
         "📍 Точка отправления (откуда забрать)\n\n"
         "Нажмите кнопку — в карте выберите точку или отправьте текущее местоположение.",
-        reply_markup=location_request_keyboard(show_change_from=False),
+        reply_markup=passenger_order_keyboard("from_location"),
     )
     await cb.answer()
 
@@ -201,7 +202,7 @@ async def order_confirm_change_from_only(cb: CallbackQuery, state: FSMContext) -
     await cb.message.answer(
         "📍 Точка отправления (откуда забрать)\n\n"
         "Нажмите кнопку — в карте выберите точку или отправьте текущее местоположение.",
-        reply_markup=location_request_keyboard(show_change_from=False),
+        reply_markup=passenger_order_keyboard("from_location"),
     )
     await cb.answer()
 
@@ -215,7 +216,7 @@ async def order_confirm_change_to_only(cb: CallbackQuery, state: FSMContext) -> 
     await cb.message.answer(
         "📍 Точка назначения (куда ехать)\n\n"
         "Нажмите кнопку и в карте выберите точку или отправьте местоположение.",
-        reply_markup=location_request_keyboard(show_change_from=True),
+        reply_markup=passenger_order_keyboard("to_location"),
     )
     await cb.answer()
 
@@ -244,6 +245,7 @@ async def order_confirm_yes(cb: CallbackQuery, state: FSMContext) -> None:
         "Обновляйте «Мои заказы» или ожидайте уведомления.",
         reply_markup=cancel_order_keyboard(oid),
     )
+    await cb.message.answer("⬇️ Меню. Можете сразу заказать ещё поездку.", reply_markup=main_passenger_keyboard())
     await cb.answer()
 
 
@@ -251,6 +253,7 @@ async def order_confirm_yes(cb: CallbackQuery, state: FSMContext) -> None:
 async def order_confirm_no(cb: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await cb.message.edit_text("Заказ отменён.")
+    await cb.message.answer("⬇️ Меню", reply_markup=main_passenger_keyboard())
     await cb.answer()
 
 
@@ -272,4 +275,5 @@ async def cancel_order_do(cb: CallbackQuery) -> None:
         except Exception:
             pass
     await cb.message.edit_text(f"Заказ #{oid} отменён.")
+    await cb.message.answer("⬇️ Меню", reply_markup=main_passenger_keyboard())
     await cb.answer()

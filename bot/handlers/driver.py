@@ -4,7 +4,12 @@ from aiogram.fsm.context import FSMContext
 
 from bot import database as db
 from bot.config import ROLE_DRIVER
-from bot.keyboards import available_orders_keyboard, driver_order_actions_keyboard, main_driver_keyboard
+from bot.keyboards import (
+    available_orders_keyboard,
+    driver_order_actions_keyboard,
+    main_driver_keyboard,
+    main_passenger_keyboard,
+)
 
 router = Router()
 
@@ -121,6 +126,7 @@ async def take_order(cb: CallbackQuery) -> None:
             pass_tid,
             f"✅ Водитель принял заказ #{oid}. Ожидайте, он скоро будет.\n"
             f"Водитель: {user.get('first_name') or 'Водитель'}",
+            reply_markup=main_passenger_keyboard(),
         )
     except Exception:
         pass
@@ -156,7 +162,11 @@ async def order_status(cb: CallbackQuery) -> None:
         "completed": "✔️ Поездка завершена. Спасибо!",
     }
     try:
-        await cb.bot.send_message(pass_tid, labels.get(new_status, f"Статус: {new_status}"))
+        await cb.bot.send_message(
+            pass_tid,
+            labels.get(new_status, f"Статус: {new_status}"),
+            reply_markup=main_passenger_keyboard(),
+        )
     except Exception:
         pass
     if new_status == "completed":

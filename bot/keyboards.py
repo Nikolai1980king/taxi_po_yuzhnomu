@@ -21,6 +21,11 @@ def switch_role_keyboard() -> InlineKeyboardMarkup:
 
 
 def main_passenger_keyboard() -> ReplyKeyboardMarkup:
+    return passenger_order_keyboard("main")
+
+
+def passenger_order_keyboard(mode: str = "main") -> ReplyKeyboardMarkup:
+    """Меню пассажира: main или main + доп.кнопки для шага заказа (from_location, to_location, comment)."""
     builder = ReplyKeyboardBuilder()
     builder.row(
         KeyboardButton(text="🚕 Заказать такси"),
@@ -28,6 +33,15 @@ def main_passenger_keyboard() -> ReplyKeyboardMarkup:
     )
     builder.row(KeyboardButton(text="❌ Отменить заказ"))
     builder.row(KeyboardButton(text="🔄 Сменить роль"))
+    if mode == "from_location":
+        builder.row(KeyboardButton(text="📍 Указать точку на карте", request_location=True))
+    elif mode == "to_location":
+        builder.row(
+            KeyboardButton(text="📍 Указать точку на карте", request_location=True),
+            KeyboardButton(text="↩️ Изменить «откуда»"),
+        )
+    elif mode == "comment":
+        builder.row(KeyboardButton(text="⏭ Пропустить"))
     return builder.as_markup(resize_keyboard=True)
 
 
@@ -88,20 +102,6 @@ def driver_order_actions_keyboard(order_id: int, status: str) -> InlineKeyboardM
             InlineKeyboardButton(text="✅ Завершить поездку", callback_data=f"order_status:{order_id}:completed"),
         )
     return builder.as_markup()
-
-
-def location_request_keyboard(show_change_from: bool = False) -> ReplyKeyboardMarkup:
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="📍 Указать точку на карте", request_location=True))
-    if show_change_from:
-        builder.row(KeyboardButton(text="↩️ Изменить «откуда»"))
-    return builder.as_markup(resize_keyboard=True)
-
-
-def comment_request_keyboard() -> ReplyKeyboardMarkup:
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="⏭ Пропустить"))
-    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
 def skip_comment_keyboard() -> InlineKeyboardMarkup:

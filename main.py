@@ -7,6 +7,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from bot.config import BOT_TOKEN
 from bot.database import cancel_order_if_searching, get_expired_searching_orders, init_db
 from bot.handlers import setup_routers
+from bot.keyboards import main_passenger_keyboard
 
 logging.basicConfig(level=logging.INFO)
 
@@ -28,6 +29,7 @@ async def check_expired_orders(bot: Bot) -> None:
                         o["passenger_telegram_id"],
                         f"⏱ За 5 минут водитель не нашёлся. Заказ #{o['id']} отменён.\n\n"
                         "Можете создать новый заказ.",
+                        reply_markup=main_passenger_keyboard(),
                     )
                 except Exception:
                     pass
