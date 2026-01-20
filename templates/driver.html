@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель водителя - Такси по Южному</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="driver-panel">
+            <header class="panel-header">
+                <h1>🚕 Панель водителя</h1>
+                <div id="driver-info"></div>
+            </header>
+            
+            <div class="status-section">
+                <div class="status-indicator" id="status-indicator">
+                    <span class="status-dot offline"></span>
+                    <span id="status-text">Офлайн</span>
+                </div>
+                <button id="toggle-status-btn" class="btn btn-primary">Выйти на линию</button>
+            </div>
+            
+            <div id="queue-info" class="queue-info" style="display: none;">
+                <p>Ваша позиция в очереди: <strong id="queue-position">-</strong></p>
+            </div>
+            
+            <div id="order-section" class="order-section" style="display: none;">
+                <h2>Новый заказ</h2>
+                <div class="order-card">
+                    <div class="order-info">
+                        <p><strong>Откуда:</strong> <span id="order-pickup"></span></p>
+                        <p><strong>Куда:</strong> <span id="order-destination"></span></p>
+                        <div class="timer" id="order-timer">00:60</div>
+                    </div>
+                    <div class="order-actions">
+                        <button id="accept-order-btn" class="btn btn-success">Принять</button>
+                        <button id="reject-order-btn" class="btn btn-danger">Отклонить</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="accepted-order-section" class="order-section" style="display: none;">
+                <h2>Текущий заказ</h2>
+                <div class="order-card">
+                    <div class="order-info">
+                        <p><strong>Откуда:</strong> <span id="accepted-pickup"></span></p>
+                        <p><strong>Куда:</strong> <span id="accepted-destination"></span></p>
+                        <p><strong>Статус:</strong> <span id="accepted-status"></span></p>
+                    </div>
+                    <div class="order-actions">
+                        <button type="button" id="complete-order-btn" class="btn btn-success" onclick="doCompleteOrder()">Завершить заказ</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="no-orders" class="no-orders">
+                <p>Ожидание заказов...</p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/driver.js') }}?v=5"></script>
+</body>
+</html>

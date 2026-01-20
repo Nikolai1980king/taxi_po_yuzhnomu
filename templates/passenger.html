@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Заказ такси - Такси по Южному</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% if not yandex_maps_api_key %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    {% endif %}
+    {% if yandex_maps_api_key %}
+    <script src="https://api-maps.yandex.ru/2.1/?apikey={{ yandex_maps_api_key }}&lang=ru_RU" type="text/javascript"></script>
+    {% endif %}
+</head>
+<body class="page-passenger">
+    <div class="container container--passenger">
+        <div class="passenger-panel passenger-panel--order">
+            <header class="panel-header panel-header--compact">
+                <h1>🚕 Заказ такси</h1>
+            </header>
+            
+            <div id="order-form-section">
+                <p id="map-hint" class="map-hint">Загрузка карты…</p>
+                <div class="map-toolbar">
+                    <button type="button" class="btn btn-outline btn-sm" id="my-location-btn">📍 Моё местоположение</button>
+                </div>
+                <div id="map" class="order-map"></div>
+                
+                <form id="order-form" class="order-form-fields">
+                    <div class="form-group form-group-compact">
+                        <label for="pickup-address">Откуда</label>
+                        <div class="input-with-reset">
+                            <input type="text" id="pickup-address" placeholder="Точка на карте" readonly>
+                            <button type="button" class="btn-reset" id="reset-pickup-btn" title="Сбросить точку">↺</button>
+                        </div>
+                        <span class="coords" id="pickup-coords"></span>
+                    </div>
+                    <div class="form-group form-group-compact">
+                        <label for="destination-address">Куда</label>
+                        <div class="input-with-reset">
+                            <input type="text" id="destination-address" placeholder="Точка на карте" readonly>
+                            <button type="button" class="btn-reset" id="reset-dest-btn" title="Сбросить точку">↺</button>
+                        </div>
+                        <span class="coords" id="destination-coords"></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block" id="confirm-order-btn" disabled>Подтвердить</button>
+                </form>
+            </div>
+            
+            <div id="order-status-section" class="order-status-section" style="display: none;">
+                <h2>Статус заказа</h2>
+                <div class="order-status-card">
+                    <div class="status-steps">
+                        <div class="step" id="step-pending"><div class="step-icon">⏳</div><div class="step-label">Ожидание водителя</div></div>
+                        <div class="step" id="step-assigned"><div class="step-icon">🚗</div><div class="step-label">Водитель назначен</div></div>
+                        <div class="step" id="step-accepted"><div class="step-icon">✅</div><div class="step-label">Водитель принял</div></div>
+                        <div class="step" id="step-completed"><div class="step-icon">🏁</div><div class="step-label">Завершено</div></div>
+                    </div>
+                    <div class="order-details">
+                        <p><strong>Откуда:</strong> <span id="status-pickup"></span></p>
+                        <p><strong>Куда:</strong> <span id="status-destination"></span></p>
+                        <p><strong>Статус:</strong> <span id="status-text"></span></p>
+                    </div>
+                    <button id="cancel-order-btn" class="btn btn-danger" style="display: none;">Отменить заказ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% if not yandex_maps_api_key %}
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    {% endif %}
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>window.USE_YANDEX = {{ 'true' if yandex_maps_api_key else 'false' }};</script>
+    <script src="{{ url_for('static', filename='js/passenger.js') }}?v=4"></script>
+</body>
+</html>
