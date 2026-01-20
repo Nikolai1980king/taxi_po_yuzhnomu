@@ -2,8 +2,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class OrderStates(StatesGroup):
-    from_address = State()
-    to_address = State()
+    from_location = State()
+    to_location = State()
     comment = State()
     confirm = State()
 

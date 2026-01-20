@@ -26,6 +26,10 @@ async def init_db() -> None:
                 driver_id INTEGER,
                 from_address TEXT NOT NULL,
                 to_address TEXT NOT NULL,
+                from_lat REAL,
+                from_lon REAL,
+                to_lat REAL,
+                to_lon REAL,
                 comment TEXT,
                 status TEXT NOT NULL DEFAULT 'searching',
                 created_at TEXT NOT NULL,
@@ -35,6 +39,11 @@ async def init_db() -> None:
                 FOREIGN KEY (driver_id) REFERENCES users(id)
             )
         """)
+        for col in ("from_lat", "from_lon", "to_lat", "to_lon"):
+            try:
+                await db.execute(f"ALTER TABLE orders ADD COLUMN {col} REAL")
+            except Exception:
+                pass
         await db.commit()
 
 
@@ -100,6 +109,10 @@ async def create_order(
     passenger_telegram_id: int,
     from_address: str,
     to_address: str,
+    from_lat: float | None = None,
+    from_lon: float | None = None,
+    to_lat: float | None = None,
+    to_lon: float | None = None,
     comment: str | None = None,
 ) -> int:
     user = await get_user(passenger_telegram_id)
@@ -108,9 +121,9 @@ async def create_order(
     now = datetime.utcnow().isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            """INSERT INTO orders (passenger_id, from_address, to_address, comment, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (user["id"], from_address, to_address, comment or "", ORDER_SEARCHING, now),
+            """INSERT INTO orders (passenger_id, from_address, to_address, from_lat, from_lon, to_lat, to_lon, comment, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user["id"], from_address, to_address, from_lat, from_lon, to_lat, to_lon, comment or "", ORDER_SEARCHING, now),
         )
         await db.commit()
         return cur.lastrowid

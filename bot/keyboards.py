@@ -54,7 +54,7 @@ def cancel_order_keyboard(order_id: int) -> InlineKeyboardMarkup:
 def available_orders_keyboard(orders: list[dict]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for o in orders:
-        short_from = (o["from_address"] or "")[:25] + ("…" if len(o["from_address"] or "") > 25 else "")
+        short_from = (o.get("from_address") or "?")[:25] + ("…" if len(o.get("from_address") or "?") > 25 else "")
         builder.row(
             InlineKeyboardButton(
                 text=f"#{o['id']} {short_from}",
@@ -90,6 +90,20 @@ def driver_order_actions_keyboard(order_id: int, status: str) -> InlineKeyboardM
     return builder.as_markup()
 
 
+def location_request_keyboard(show_change_from: bool = False) -> ReplyKeyboardMarkup:
+    builder = ReplyKeyboardBuilder()
+    builder.row(KeyboardButton(text="📍 Указать точку на карте", request_location=True))
+    if show_change_from:
+        builder.row(KeyboardButton(text="↩️ Изменить «откуда»"))
+    return builder.as_markup(resize_keyboard=True)
+
+
+def comment_request_keyboard() -> ReplyKeyboardMarkup:
+    builder = ReplyKeyboardBuilder()
+    builder.row(KeyboardButton(text="⏭ Пропустить"))
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
 def skip_comment_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⏭ Пропустить", callback_data="skip_comment"))
@@ -102,4 +116,9 @@ def confirm_order_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="✅ Подтвердить", callback_data="confirm_order"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_new_order"),
     )
+    builder.row(
+        InlineKeyboardButton(text="✏️ Изменить «откуда»", callback_data="change_from_only"),
+        InlineKeyboardButton(text="✏️ Изменить «куда»", callback_data="change_to_only"),
+    )
+    builder.row(InlineKeyboardButton(text="↩️ Заново обе точки", callback_data="change_points"))
     return builder.as_markup()

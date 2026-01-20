@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
 
 from bot import database as db
 from bot.config import ROLE_DRIVER
@@ -17,24 +18,40 @@ STATUS_LABELS = {
 
 def _format_order(o: dict) -> str:
     s = f"Заказ #{o['id']}\n"
-    s += f"📍 Откуда: {o['from_address']}\n"
-    s += f"📍 Куда: {o['to_address']}\n"
+    s += f"📍 Откуда: {o.get('from_address') or '—'}\n"
+    s += f"📍 Куда: {o.get('to_address') or '—'}\n"
     if o.get("comment"):
         s += f"💬 {o['comment']}\n"
     s += f"👤 Пассажир: {o.get('passenger_name', '—')}\n"
     s += f"📌 {STATUS_LABELS.get(o['status'], o['status'])}\n"
+    fl, fln, tl, tln = o.get("from_lat"), o.get("from_lon"), o.get("to_lat"), o.get("to_lon")
+    if fl is not None and fln is not None and tl is not None and tln is not None:
+        s += f"\n🗺 Маршрут: https://yandex.ru/maps/?rtext={fl},{fln}~{tl},{tln}&rtt=auto\n"
     return s
 
 
 # --- Выйти на линию / Сойти с линии ---
 
+def _drivers_plural(n: int) -> str:
+    if n == 1:
+        return "1 водитель"
+    if 2 <= n <= 4:
+        return f"{n} водителя"
+    return f"{n} водителей"
+
+
 @router.message(F.text == "🟢 Выйти на линию")
-async def driver_online(msg: Message) -> None:
+async def driver_online(msg: Message, state: FSMContext) -> None:
+    await state.clear()
     user = await db.get_user(msg.from_user.id)
     if not user or user["role"] != ROLE_DRIVER:
         return
     await db.set_driver_online(msg.from_user.id, True)
-    await msg.answer("🟢 Вы на линии. Заказы можно смотреть в «Доступные заказы».", reply_markup=main_driver_keyboard())
+    n = len(await db.get_online_drivers())
+    await msg.answer(
+        f"🟢 Вы на линии. Сейчас на линии: {_drivers_plural(n)}.\nЗаказы — в «Доступные заказы».",
+        reply_markup=main_driver_keyboard(),
+    )
 
 
 @router.message(F.text == "🔴 Сойти с линии")
@@ -53,7 +70,8 @@ async def driver_offline(msg: Message) -> None:
 # --- Доступные заказы ---
 
 @router.message(F.text == "📋 Доступные заказы")
-async def available_orders(msg: Message) -> None:
+async def available_orders(msg: Message, state: FSMContext) -> None:
+    await state.clear()
     user = await db.get_user(msg.from_user.id)
     if not user or user["role"] != ROLE_DRIVER:
         return
@@ -62,18 +80,21 @@ async def available_orders(msg: Message) -> None:
         return
     active = await db.get_driver_active_order(msg.from_user.id)
     if active:
+        n = len(await db.get_online_drivers())
         await msg.answer(
-            "У вас есть активный заказ:\n\n" + _format_order(active),
+            f"На линии: {_drivers_plural(n)}.\n\nУ вас есть активный заказ:\n\n" + _format_order(active),
             reply_markup=driver_order_actions_keyboard(active["id"], active["status"]),
         )
         return
     orders = await db.get_available_orders()
+    n = len(await db.get_online_drivers())
     if not orders:
-        await msg.answer("Пока нет свободных заказов. Проверьте позже.")
+        await msg.answer(f"Пока нет свободных заказов. На линии: {_drivers_plural(n)}. Проверьте позже.")
         return
-    text = "Свободные заказы (нажмите, чтобы взять):\n"
+    text = f"На линии: {_drivers_plural(n)}.\n\nСвободные заказы (нажмите, чтобы взять):\n"
     for o in orders:
-        text += f"\n#{o['id']} | {o['from_address'][:40]} → {o['to_address'][:30]}\n"
+        fa, ta = (o.get("from_address") or "?")[:40], (o.get("to_address") or "?")[:30]
+        text += f"\n#{o['id']} | {fa} → {ta}\n"
     await msg.answer(text, reply_markup=available_orders_keyboard(orders))
 
 
@@ -151,15 +172,18 @@ async def order_status(cb: CallbackQuery) -> None:
 # --- Мой заказ ---
 
 @router.message(F.text == "📌 Мой заказ")
-async def my_order(msg: Message) -> None:
+async def my_order(msg: Message, state: FSMContext) -> None:
+    await state.clear()
     user = await db.get_user(msg.from_user.id)
     if not user or user["role"] != ROLE_DRIVER:
         return
     active = await db.get_driver_active_order(msg.from_user.id)
     if not active:
-        await msg.answer("Нет активного заказа. Смотрите «Доступные заказы».")
+        n = len(await db.get_online_drivers())
+        await msg.answer(f"Нет активного заказа. На линии: {_drivers_plural(n)}. Смотрите «Доступные заказы».")
         return
+    n = len(await db.get_online_drivers())
     await msg.answer(
-        _format_order(active),
+        f"На линии: {_drivers_plural(n)}.\n\n" + _format_order(active),
         reply_markup=driver_order_actions_keyboard(active["id"], active["status"]),
     )
