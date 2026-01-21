@@ -2,9 +2,12 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Панель водителя - Такси по Южному</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% if yandex_maps_api_key %}
+    <script src="https://api-maps.yandex.ru/2.1/?apikey={{ yandex_maps_api_key }}&lang=ru_RU" type="text/javascript"></script>
+    {% endif %}
 </head>
 <body>
     <div class="container">
@@ -12,6 +15,7 @@
             <header class="panel-header">
                 <h1>🚕 Панель водителя</h1>
                 <div id="driver-info"></div>
+                <p class="role-switch"><a href="/">Главная</a> · <a href="#" id="switch-to-passenger">🚖 Заказать такси</a></p>
             </header>
             
             <div class="status-section">
@@ -43,13 +47,17 @@
             
             <div id="accepted-order-section" class="order-section" style="display: none;">
                 <h2>Текущий заказ</h2>
+                <p class="driver-nav-stage" id="driver-nav-stage"></p>
+                <div id="driver-route-map" class="driver-route-map"></div>
+                <p class="driver-map-hint" id="driver-map-hint"></p>
                 <div class="order-card">
                     <div class="order-info">
                         <p><strong>Откуда:</strong> <span id="accepted-pickup"></span></p>
                         <p><strong>Куда:</strong> <span id="accepted-destination"></span></p>
                         <p><strong>Статус:</strong> <span id="accepted-status"></span></p>
                     </div>
-                    <div class="order-actions">
+                    <div class="order-actions order-actions--driver-nav">
+                        <button type="button" id="passenger-in-car-btn" class="btn btn-primary" onclick="doPassengerInCar()" style="display: none;">Пассажир в машине</button>
                         <button type="button" id="complete-order-btn" class="btn btn-success" onclick="doCompleteOrder()">Завершить заказ</button>
                     </div>
                 </div>
@@ -62,6 +70,7 @@
     </div>
     
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="{{ url_for('static', filename='js/driver.js') }}?v=5"></script>
+    <script>window.DRIVER_HAS_YANDEX = {{ 'true' if yandex_maps_api_key else 'false' }};</script>
+    <script src="{{ url_for('static', filename='js/driver.js') }}?v=6"></script>
 </body>
 </html>

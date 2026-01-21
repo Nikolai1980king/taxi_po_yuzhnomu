@@ -322,6 +322,7 @@ document.getElementById('cancel-order-btn').addEventListener('click', function (
 socket.on('connect', function () {});
 socket.on('order_assigned', function (d) { if (currentOrderId !== d.order_id) return; document.getElementById('status-text').textContent = 'Водитель назначен'; updateStatusStep('pending', false); updateStatusStep('assigned', true); });
 socket.on('order_accepted', function (d) { if (currentOrderId !== d.order_id) return; document.getElementById('status-text').textContent = 'Водитель принял'; updateStatusStep('assigned', false); updateStatusStep('accepted', true); document.getElementById('cancel-order-btn').style.display = 'none'; });
+socket.on('order_in_progress', function (d) { if (currentOrderId !== d.order_id) return; document.getElementById('status-text').textContent = 'В пути к месту назначения'; });
 socket.on('order_completed', function (d) {
     if (currentOrderId !== d.order_id) return;
     document.getElementById('status-text').textContent = 'Завершено'; updateStatusStep('accepted', false); updateStatusStep('completed', true); document.getElementById('cancel-order-btn').style.display = 'none';
@@ -336,5 +337,14 @@ setInterval(function () {
         if (['completed','cancelled'].indexOf(d.status) >= 0) document.getElementById('cancel-order-btn').style.display = 'none';
     }).catch(function () {});
 }, 5000);
+
+var elSwitchDriver = document.getElementById('switch-to-driver');
+if (elSwitchDriver) elSwitchDriver.addEventListener('click', function (e) {
+    e.preventDefault();
+    fetch('/api/me/switch-role', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({role: 'driver'}) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d.role) window.location.href = '/driver'; else alert(d.error || 'Ошибка'); })
+        .catch(function () { alert('Ошибка сети'); });
+});
 
 document.addEventListener('DOMContentLoaded', startOrderForm);

@@ -5,6 +5,9 @@ let currentOrder = null;
 let driverUserId = null;
 let orderTimer = null;
 let timeLeft = 60;
+let driverMap = null;
+let driverRoute = null;
+let navStage = 'to_pickup';
 
 // --- Обратный геокодинг: улица и дом (Nominatim) ---
 function formatStreetAndHouse(street, house) {
@@ -41,26 +44,32 @@ function resolveAddress(el, lat, lng, fallback) {
 // Загрузка информации о водителе
 async function loadDriverInfo() {
     try {
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: 'temp'}) // В реальном приложении использовать сессию
+        });
+        
         // Проверка текущего заказа
         await checkCurrentOrder();
     } catch (error) {
         console.error('Ошибка загрузки информации:', error);
     }
 }
-
-// Проверка текущего заказа
-async function checkCurrentOrder() {
-    try {
-        const response = await fetch('/api/driver/orders/current');
-        const data = await response.json();
         if (data.order_id) {
-            var ord = { id: data.order_id, order_id: data.order_id, pickup_address: data.pickup_address, destination_address: data.destination_address, pickup_lat: data.pickup_lat, pickup_lng: data.pickup_lng, destination_lat: data.destination_lat, destination_lng: data.destination_lng, assigned_at: data.assigned_at };
+            var ord = { id: data.order_id, order_id: data.order_id, pickup_address: data.pickup_address, destination_address: data.destination_address, pickup_lat: data.pickup_lat, pickup_lng: data.pickup_lng, destination_lat: data.destination_lat, destination_lng: data.destination_lng, assigned_at: data.assigned_at, status: data.status };
             if (data.status === 'accepted' || data.status === 'in_progress') {
                 currentOrder = ord;
                 showAcceptedOrder(ord);
             } else {
                 showOrder(data);
             }
+    try {
+        const response = await fetch('/api/driver/orders/current');
+        const data = await response.json();
+        
+        if (data.order_id) {
+            showOrder(data);
         } else {
             showNoOrders();
         }
@@ -153,12 +162,6 @@ document.getElementById('reject-order-btn').addEventListener('click', async () =
             const data = await response.json();
             alert(data.error || 'Ошибка отклонения заказа');
         }
-    } catch (error) {
-        console.error('Ошибка отклонения заказа:', error);
-        alert('Ошибка отклонения заказа');
-    }
-});
-
 // Завершение заказа — вызывается по onclick с кнопки
 window.doCompleteOrder = function doCompleteOrder() {
     var id = currentOrder && (currentOrder.id || currentOrder.order_id);
@@ -191,34 +194,151 @@ function showOrder(orderData) {
     var destEl = document.getElementById('order-destination');
     resolveAddress(pickupEl, orderData.pickup_lat, orderData.pickup_lng, orderData.pickup_address);
     resolveAddress(destEl, orderData.destination_lat, orderData.destination_lng, orderData.destination_address);
+// Показать заказ
+function showOrder(orderData) {
+    currentOrder = orderData;
     
-    document.getElementById('order-section').style.display = 'block';
+    document.getElementById('order-pickup').textContent = orderData.pickup_address;
+    document.getElementById('order-destination').textContent = orderData.destination_address;
+    if (currentOrder.assigned_at) {
+        const assignedTime = new Date(currentOrder.assigned_at);
     document.getElementById('accepted-order-section').style.display = 'none';
     document.getElementById('no-orders').style.display = 'none';
     
     // Запустить таймер
-    if (currentOrder.assigned_at) {
-        const assignedTime = new Date(currentOrder.assigned_at);
+    if (orderData.assigned_at) {
+        const assignedTime = new Date(orderData.assigned_at);
         const now = new Date();
         const elapsed = Math.floor((now - assignedTime) / 1000);
         timeLeft = Math.max(0, 60 - elapsed);
     } else {
-        timeLeft = 60;
-    }
-    
-    startOrderTimer();
-}
-
-// Показать принятый заказ
+// Показать принятый заказ (stage: to_pickup | to_destination, по умолчанию из orderData.status)
 function showAcceptedOrder(orderData) {
+    var stage = (orderData.status === 'in_progress') ? 'to_destination' : 'to_pickup';
+    navStage = stage;
+    
     var pEl = document.getElementById('accepted-pickup');
     var dEl = document.getElementById('accepted-destination');
     resolveAddress(pEl, orderData.pickup_lat, orderData.pickup_lng, orderData.pickup_address);
     resolveAddress(dEl, orderData.destination_lat, orderData.destination_lng, orderData.destination_address);
     var st = document.getElementById('accepted-status');
-    if (st) st.textContent = 'Принят';
+    if (st) st.textContent = (stage === 'to_pickup') ? 'К пассажиру' : 'В пути к месту назначения';
+    
+    var stageEl = document.getElementById('driver-nav-stage');
+    if (stageEl) stageEl.textContent = (stage === 'to_pickup') ? 'Маршрут до пассажира' : 'Маршрут до места назначения';
+    
+    var btnPassenger = document.getElementById('passenger-in-car-btn');
+    var btnComplete = document.getElementById('complete-order-btn');
+    if (btnPassenger) btnPassenger.style.display = (stage === 'to_pickup') ? 'inline-block' : 'none';
+    if (btnComplete) btnComplete.style.display = (stage === 'to_destination') ? 'inline-block' : 'none';
     
     document.getElementById('order-section').style.display = 'none';
+    document.getElementById('accepted-order-section').style.display = 'block';
+    document.getElementById('no-orders').style.display = 'none';
+    
+    initDriverMap(orderData, stage);
+}
+
+function setDriverMapHint(msg) {
+    var el = document.getElementById('driver-map-hint');
+    if (el) el.textContent = msg || '';
+}
+
+function addPlacemarksOnly(map, points) {
+    if (!map || typeof ymaps === 'undefined' || !points || points.length === 0) return;
+    points.forEach(function (p, i) {
+        var pm = new ymaps.Placemark(p, { hintContent: i === 0 ? 'Откуда' : 'Куда' }, { preset: 'islands#redCircleIcon' });
+        map.geoObjects.add(pm);
+    });
+    if (points.length >= 2) {
+        var minLat = Math.min(points[0][0], points[1][0]);
+        var maxLat = Math.max(points[0][0], points[1][0]);
+        var minLng = Math.min(points[0][1], points[1][1]);
+        var maxLng = Math.max(points[0][1], points[1][1]);
+        map.setBounds([[minLat, minLng], [maxLat, maxLng]], { checkZoomRange: true, duration: 200 });
+    }
+}
+
+function initDriverMap(orderData, stage) {
+    if (!window.DRIVER_HAS_YANDEX) {
+        setDriverMapHint('Карта недоступна (нет ключа Яндекс.Карт)');
+        return;
+    }
+    if (typeof ymaps === 'undefined') {
+        setDriverMapHint('Загрузка карты… (обновите, если не появилась)');
+        return;
+    }
+    setDriverMapHint('');
+    var pickup = [orderData.pickup_lat, orderData.pickup_lng];
+    var dest = [orderData.destination_lat, orderData.destination_lng];
+    ymaps.ready(function () {
+        if (!document.getElementById('driver-route-map')) return;
+        if (!driverMap) {
+            driverMap = new ymaps.Map('driver-route-map', { center: pickup, zoom: 14 });
+        }
+        if (driverRoute) {
+            driverMap.geoObjects.remove(driverRoute);
+            driverRoute = null;
+        }
+        if (stage === 'to_pickup') {
+            navigator.geolocation.getCurrentPosition(
+                function (pos) {
+                    var from = [pos.coords.latitude, pos.coords.longitude];
+                    ymaps.route([from, pickup]).then(function (route) {
+                        driverRoute = route;
+                        driverMap.geoObjects.add(route);
+                        route.getBounds().then(function (b) {
+                            if (driverMap) driverMap.setBounds(b, { checkZoomRange: true, duration: 300 });
+                        });
+                    }).catch(function () {
+                        addPlacemarksOnly(driverMap, [from, pickup]);
+                    });
+                },
+                function () {
+                    setDriverMapHint('Разрешите геолокацию для маршрута до пассажира.');
+                    addPlacemarksOnly(driverMap, [pickup, dest]);
+                }
+            );
+        } else {
+            ymaps.route([pickup, dest]).then(function (route) {
+                driverRoute = route;
+                driverMap.geoObjects.add(route);
+                route.getBounds().then(function (b) {
+                    if (driverMap) driverMap.setBounds(b, { checkZoomRange: true, duration: 300 });
+                });
+            }).catch(function () {
+                addPlacemarksOnly(driverMap, [pickup, dest]);
+            });
+        }
+    });
+}
+
+window.doPassengerInCar = function doPassengerInCar() {
+    var id = currentOrder && (currentOrder.id || currentOrder.order_id);
+    if (!id) { alert('Нет активного заказа'); return; }
+    var btn = document.getElementById('passenger-in-car-btn');
+    if (btn) btn.disabled = true;
+    fetch('/api/driver/orders/' + String(id) + '/start', { method: 'POST', credentials: 'same-origin' })
+        .then(function (r) {
+            if (r.ok) {
+                currentOrder.status = 'in_progress';
+                showAcceptedOrder(currentOrder);
+            } else {
+                return r.json().then(function (d) { alert(d.error || 'Ошибка'); });
+            }
+        })
+        .catch(function (err) { console.error(err); alert('Ошибка сети'); })
+        .finally(function () { if (btn) btn.disabled = false; });
+};
+    document.getElementById('accepted-status').textContent = 'Принят';
+    
+    document.getElementById('order-section').style.display = 'none';
+    if (driverMap) {
+        try { driverMap.destroy(); } catch (e) {}
+        driverMap = null;
+    }
+    driverRoute = null;
+    setDriverMapHint('');
     document.getElementById('accepted-order-section').style.display = 'block';
     document.getElementById('no-orders').style.display = 'none';
 }
@@ -261,15 +381,9 @@ function clearOrderTimer() {
         clearInterval(orderTimer);
         orderTimer = null;
     }
-    timeLeft = 60;
+    if (driverUserId) socket.emit('driver_register', { user_id: driverUserId });
     document.getElementById('order-timer').textContent = '00:60';
 }
-
-// WebSocket события
-socket.on('connect', () => {
-    if (driverUserId) socket.emit('driver_register', { user_id: driverUserId });
-});
-
 socket.on('new_order', function (data) {
     showOrder({
         id: data.order_id,
@@ -280,6 +394,12 @@ socket.on('new_order', function (data) {
         pickup_lng: data.pickup_lng,
         destination_lat: data.destination_lat,
         destination_lng: data.destination_lng,
+
+socket.on('new_order', (data) => {
+    showOrder({
+        id: data.order_id,
+        pickup_address: data.pickup_address,
+        destination_address: data.destination_address,
         assigned_at: data.assigned_at
     });
 });
@@ -290,12 +410,6 @@ socket.on('order_timeout', (data) => {
         alert('Время на принятие заказа истекло');
     }
 });
-
-socket.on('queue_updated', (data) => {
-    // Обновить информацию об очереди если нужно
-    console.log('Очередь обновлена:', data.queue);
-});
-
 // Загрузка информации о пользователе и подписка на заказы
 async function loadUserInfo() {
     try {
@@ -325,15 +439,3 @@ async function loadUserInfo() {
         }
     } catch (e) {
         console.error('Ошибка загрузки информации о пользователе:', e);
-    }
-}
-
-// Инициализация при загрузке страницы
-document.addEventListener('DOMContentLoaded', () => {
-    loadUserInfo();
-    loadDriverInfo();
-    // Периодическая проверка текущего заказа (если сокет не доставил new_order)
-    setInterval(() => {
-        if (!currentOrder) checkCurrentOrder();
-    }, 5000);
-});

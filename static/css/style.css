@@ -332,6 +332,13 @@ select:focus {
     text-decoration: underline;
 }
 
+.role-choice-section .role-choice-hint { margin-bottom: 12px; color: #555; }
+.role-choice-buttons { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
+.role-choice-buttons .btn-role { flex: 1; }
+.role-switch { font-size: 14px; margin-top: 8px; }
+.role-switch a { color: #667eea; text-decoration: none; margin-right: 8px; }
+.role-switch a:hover { text-decoration: underline; }
+
 /* Адаптивность для мобильных */
 @media (max-width: 480px) {
     body {
@@ -490,5 +497,40 @@ select:focus {
     }
     .page-passenger .passenger-panel--order {
         padding: 10px 12px 16px;
+    }
+}
+
+/* --- Навигационная панель водителя --- */
+.driver-nav-stage {
+    font-size: 14px;
+    font-weight: 600;
+    color: #667eea;
+    margin: 4px 0 8px;
+}
+.driver-route-map {
+    width: 100%;
+    height: 42vh;
+    min-height: 240px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #e5e7eb;
+    margin: 6px 0 10px;
+}
+.driver-map-hint {
+    font-size: 12px;
+    color: #6b7280;
+    margin: -4px 0 10px;
+}
+.order-actions--driver-nav {
+    flex-wrap: wrap;
+}
+.order-actions--driver-nav .btn {
+    flex: 1;
+    min-width: 140px;
+}
+@media (max-width: 480px) {
+    .driver-route-map {
+        height: 38vh;
+        min-height: 200px;
     }
 }

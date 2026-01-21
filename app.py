@@ -164,7 +164,7 @@ def index():
 
 @app.route('/driver')
 def driver_page():
-    return render_template('driver.html')
+    return render_template('driver.html', yandex_maps_api_key=app.config.get('YANDEX_MAPS_API_KEY', ''))
 
 
 @app.route('/passenger')
@@ -309,6 +309,43 @@ def get_current_user():
     }), 200
 
 
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'status': 'ok'}), 200
+
+
+@app.route('/api/me/switch-role', methods=['POST'])
+def switch_role():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not authenticated'}), 401
+    data = request.json or {}
+    role = (data.get('role') or '').strip().lower()
+    if role not in ('driver', 'passenger'):
+        return jsonify({'error': 'Укажите роль: driver или passenger'}), 400
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    want = UserRole.DRIVER if role == 'driver' else UserRole.PASSENGER
+    if user.role == want:
+        session['user_role'] = user.role.value
+        return jsonify({'role': user.role.value}), 200
+    if want == UserRole.PASSENGER:
+        if user.role == UserRole.DRIVER and user.current_order_id:
+            return jsonify({'error': 'Завершите или отмените текущий заказ перед сменой роли'}), 400
+        if user.role == UserRole.DRIVER:
+            remove_driver_from_queue(user_id)
+            user.is_online = False
+        user.role = UserRole.PASSENGER
+        session['user_role'] = 'passenger'
+    else:
+        user.role = UserRole.DRIVER
+        session['user_role'] = 'driver'
+    db.session.commit()
+    return jsonify({'role': user.role.value}), 200
+
+
 @app.route('/api/driver/orders/current', methods=['GET'])
 def get_current_order():
     user_id = session.get('user_id')
@@ -405,6 +442,28 @@ def reject_order(order_id):
     assign_order_to_next_driver(order_id)
     
     return jsonify({'status': 'rejected'}), 200
+
+
+@app.route('/api/driver/orders/<int:order_id>/start', methods=['POST'])
+def start_order(order_id):
+    """Пассажир в машине — переход в статус «В пути», уведомление пассажира"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Not authenticated'}), 401
+    user = User.query.get(user_id)
+    if not user or user.role != UserRole.DRIVER:
+        return jsonify({'error': 'Not a driver'}), 403
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({'error': 'Order not found'}), 404
+    if order.driver_id != user_id:
+        return jsonify({'error': 'Order not assigned to you'}), 403
+    if order.status != OrderStatus.ACCEPTED:
+        return jsonify({'error': 'Заказ уже в пути или завершён'}), 400
+    order.status = OrderStatus.IN_PROGRESS
+    db.session.commit()
+    socketio.emit('order_in_progress', {'order_id': order_id}, room=f'passenger_{order.passenger_id}')
+    return jsonify({'status': 'in_progress'}), 200
 
 
 @app.route('/api/driver/orders/<int:order_id>/complete', methods=['POST'])

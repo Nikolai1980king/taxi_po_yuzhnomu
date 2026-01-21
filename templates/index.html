@@ -35,6 +35,16 @@
                 <p class="switch-link">Уже есть аккаунт? <a href="#" id="show-login">Войти</a></p>
             </div>
             
+            <div id="logged-in-section" class="role-choice-section" style="display: none;">
+                <h2>Выберите режим</h2>
+                <p class="role-choice-hint" id="logged-in-username"></p>
+                <div class="role-choice-buttons">
+                    <a href="#" id="btn-role-passenger" class="btn btn-primary btn-role">🚖 Заказать такси</a>
+                    <a href="#" id="btn-role-driver" class="btn btn-primary btn-role">🚕 Работа водителем</a>
+                </div>
+                <p class="switch-link"><a href="#" id="btn-logout">Выйти</a></p>
+            </div>
+            
             <div id="error-message" class="error-message" style="display: none;"></div>
         </div>
     </div>
@@ -42,75 +52,55 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script>
-        // Переключение между входом и регистрацией
-        document.getElementById('show-register').addEventListener('click', (e) => {
-            e.preventDefault();
-            document.getElementById('login-section').style.display = 'none';
-            document.getElementById('register-section').style.display = 'block';
-        });
-        
-        document.getElementById('show-login').addEventListener('click', (e) => {
-            e.preventDefault();
-            document.getElementById('register-section').style.display = 'none';
-            document.getElementById('login-section').style.display = 'block';
-        });
-        
-        // Обработка регистрации
-        document.getElementById('register-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('reg-username').value;
-            const phone = document.getElementById('reg-phone').value;
-            const role = document.getElementById('reg-role').value;
-            
-            try {
-                const response = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({username, phone, role})
-                });
-                
-                const data = await response.json();
-                if (response.ok) {
-                    window.location.href = role === 'driver' ? '/driver' : '/passenger';
-                } else {
-                    showError(data.error);
-                }
-            } catch (error) {
-                showError('Ошибка регистрации');
-            }
-        });
-        
-        // Обработка входа
-        document.getElementById('login-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('login-username').value;
-            
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({username})
-                });
-                
-                const data = await response.json();
-                if (response.ok) {
-                    window.location.href = data.role === 'driver' ? '/driver' : '/passenger';
-                } else {
-                    showError(data.error);
-                }
-            } catch (error) {
-                showError('Ошибка входа');
-            }
-        });
-        
         function showError(message) {
             const errorDiv = document.getElementById('error-message');
             errorDiv.textContent = message;
             errorDiv.style.display = 'block';
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 5000);
+            setTimeout(() => { errorDiv.style.display = 'none'; }, 5000);
         }
+        function showSection(id) {
+            ['login-section','register-section','logged-in-section'].forEach(s => {
+                document.getElementById(s).style.display = s === id ? 'block' : 'none';
+            });
+        }
+        function switchRoleAndGo(role, path) {
+            fetch('/api/me/switch-role', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({role}) })
+                .then(r => r.json())
+                .then(d => { if (d.role) window.location.href = path; else showError(d.error || 'Ошибка'); })
+                .catch(() => showError('Ошибка сети'));
+        }
+        fetch('/api/user/current').then(r => r.status === 200 ? r.json() : Promise.reject()).then(data => {
+            showSection('logged-in-section');
+            var u = document.getElementById('logged-in-username'); if (u) u.textContent = 'Привет, ' + (data.username || '') + '!';
+        }).catch(function() {});
+        document.getElementById('show-register').addEventListener('click', function(e) { e.preventDefault(); showSection('register-section'); });
+        document.getElementById('show-login').addEventListener('click', function(e) { e.preventDefault(); showSection('login-section'); });
+        document.getElementById('btn-role-passenger').addEventListener('click', function(e) { e.preventDefault(); switchRoleAndGo('passenger', '/passenger'); });
+        document.getElementById('btn-role-driver').addEventListener('click', function(e) { e.preventDefault(); switchRoleAndGo('driver', '/driver'); });
+        document.getElementById('btn-logout').addEventListener('click', function(e) {
+            e.preventDefault();
+            fetch('/api/logout', { method: 'POST' }).then(function() { showSection('login-section'); document.getElementById('login-username').value = ''; });
+        });
+        document.getElementById('register-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var username = document.getElementById('reg-username').value, phone = document.getElementById('reg-phone').value, role = document.getElementById('reg-role').value;
+            try {
+                var r = await fetch('/api/register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: username, phone: phone, role: role}) });
+                var data = await r.json();
+                if (r.ok) { showSection('logged-in-section'); document.getElementById('logged-in-username').textContent = 'Привет, ' + username + '!'; }
+                else showError(data.error);
+            } catch (err) { showError('Ошибка регистрации'); }
+        });
+        document.getElementById('login-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var username = document.getElementById('login-username').value;
+            try {
+                var r = await fetch('/api/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username: username}) });
+                var data = await r.json();
+                if (r.ok) { showSection('logged-in-section'); document.getElementById('logged-in-username').textContent = 'Привет, ' + (data.username || username) + '!'; }
+                else showError(data.error);
+            } catch (err) { showError('Ошибка входа'); }
+        });
     </script>
 </body>
 </html>
