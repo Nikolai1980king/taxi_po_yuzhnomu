@@ -57,6 +57,8 @@
                         <p><strong>Статус:</strong> <span id="accepted-status"></span></p>
                     </div>
                     <div class="order-actions order-actions--driver-nav">
+                        <button type="button" id="nav-to-pickup-btn" class="btn btn-outline btn-sm" style="display: none;">Навигатор до пассажира</button>
+                        <button type="button" id="nav-to-dest-btn" class="btn btn-outline btn-sm" style="display: none;">Навигатор до назначения</button>
                         <button type="button" id="passenger-in-car-btn" class="btn btn-primary" onclick="doPassengerInCar()" style="display: none;">Пассажир в машине</button>
                         <button type="button" id="complete-order-btn" class="btn btn-success" onclick="doCompleteOrder()">Завершить заказ</button>
                     </div>
@@ -71,6 +73,6 @@
     
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>window.DRIVER_HAS_YANDEX = {{ 'true' if yandex_maps_api_key else 'false' }};</script>
-    <script src="{{ url_for('static', filename='js/driver.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/driver.js') }}?v=7"></script>
 </body>
 </html>
