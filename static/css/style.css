@@ -339,6 +339,23 @@ select:focus {
 .role-switch a { color: #667eea; text-decoration: none; margin-right: 8px; }
 .role-switch a:hover { text-decoration: underline; }
 
+.geo-status {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: #f3f4f6;
+    border-radius: 10px;
+    font-size: 13px;
+    color: #374151;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+}
+.geo-status #geo-status-text {
+    flex: 1;
+    min-width: 0;
+}
+
 /* Адаптивность для мобильных */
 @media (max-width: 480px) {
     body {

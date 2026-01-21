@@ -24,6 +24,10 @@
                     <span id="status-text">Офлайн</span>
                 </div>
                 <button id="toggle-status-btn" class="btn btn-primary">Выйти на линию</button>
+                <div class="geo-status">
+                    <div id="geo-status-text">Геолокация: не определена</div>
+                    <button type="button" id="geo-refresh-btn" class="btn btn-outline btn-sm">Обновить геолокацию</button>
+                </div>
             </div>
             
             <div id="queue-info" class="queue-info" style="display: none;">
@@ -73,6 +77,6 @@
     
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>window.DRIVER_HAS_YANDEX = {{ 'true' if yandex_maps_api_key else 'false' }};</script>
-    <script src="{{ url_for('static', filename='js/driver.js') }}?v=7"></script>
+    <script src="{{ url_for('static', filename='js/driver.js') }}?v=9"></script>
 </body>
 </html>

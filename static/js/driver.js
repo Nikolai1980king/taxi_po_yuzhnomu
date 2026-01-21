@@ -11,6 +11,10 @@ let driverMap = null;
 let driverRoute = null;
 let navStage = 'to_pickup'; // to_pickup | to_destination
 
+// Геолокация водителя
+let lastGeo = null; // { lat, lng, accuracy, ts }
+let geoWatchId = null;
+
 // --- Обратный геокодинг: улица и дом (Nominatim) ---
 function formatStreetAndHouse(street, house) {
     var parts = [];
@@ -122,11 +126,20 @@ function initDriverMap(orderData, stage) {
 }
 
 function getCurrentLocation(cb) {
+    // Если есть свежая позиция из watchPosition — используем её
+    if (lastGeo && (Date.now() - lastGeo.ts) < 60000) {
+        cb({ lat: lastGeo.lat, lng: lastGeo.lng });
+        return;
+    }
     if (!navigator.geolocation) { cb(null); return; }
     navigator.geolocation.getCurrentPosition(
-        function (p) { cb({ lat: p.coords.latitude, lng: p.coords.longitude }); },
+        function (p) {
+            lastGeo = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, ts: Date.now() };
+            updateGeoStatus();
+            cb({ lat: lastGeo.lat, lng: lastGeo.lng });
+        },
         function () { cb(null); },
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
 }
 
@@ -138,11 +151,78 @@ function buildYandexMapsRouteUrl(from, to) {
 }
 
 function openNavigatorTo(to) {
-    // Стараемся построить маршрут "от текущей геолокации"; если её нет — открываем просто точку назначения
-    getCurrentLocation(function (from) {
-        var url = buildYandexMapsRouteUrl(from, to);
-        window.location.href = url;
-    });
+    // На телефоне лучше пытаться открыть Яндекс.Навигатор (он возьмёт реальную геопозицию сам),
+    // иначе при веб-открытии без origin Яндекс часто подставляет дефолт (например, Москва).
+    var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+    var destLat = to.lat.toFixed(6);
+    var destLng = to.lng.toFixed(6);
+
+    function openWebRoute(from) {
+        // В вебе без origin часто будет "Москва", поэтому стараемся получить origin
+        if (!from) {
+            var hint = [];
+            if (!window.isSecureContext) hint.push('Откройте сайт по HTTPS (на HTTP геолокация часто блокируется).');
+            hint.push('Разрешите доступ к геолокации в браузере и включите GPS.');
+            alert('Не удалось определить местоположение. ' + hint.join(' '));
+            return;
+        }
+        window.location.href = buildYandexMapsRouteUrl(from, to);
+    }
+
+    if (isMobile) {
+        // Deep-link: если Навигатор установлен — откроется и построит маршрут от текущего местоположения
+        // Документация: yandexnavi://build_route_on_map?lat_to=...&lon_to=...
+        var naviUrl = 'yandexnavi://build_route_on_map?lat_to=' + destLat + '&lon_to=' + destLng;
+        // Если есть известная точка старта — добавим (не обязательно)
+        if (lastGeo) naviUrl += '&lat_from=' + lastGeo.lat.toFixed(6) + '&lon_from=' + lastGeo.lng.toFixed(6);
+        window.location.href = naviUrl;
+
+        // Fallback: если приложение не установлено — через ~1.2s откроем веб-маршрут (если браузер не ушёл в фон)
+        setTimeout(function () {
+            getCurrentLocation(openWebRoute);
+        }, 1200);
+        return;
+    }
+
+    // Desktop: строим веб-маршрут только при наличии геолокации
+    getCurrentLocation(openWebRoute);
+}
+
+function updateGeoStatus(extra) {
+    var el = document.getElementById('geo-status-text');
+    if (!el) return;
+    if (!navigator.geolocation) {
+        el.textContent = 'Геолокация: недоступна в браузере';
+        return;
+    }
+    if (!lastGeo) {
+        var warn = !window.isSecureContext ? ' (нужен HTTPS: сейчас ' + window.location.protocol + ')' : '';
+        el.textContent = 'Геолокация: не определена' + warn + (extra ? ' — ' + extra : '');
+        return;
+    }
+    var warn2 = !window.isSecureContext ? ' — предупреждение: контекст не HTTPS' : '';
+    el.textContent = 'Геолокация: ' + lastGeo.lat.toFixed(6) + ', ' + lastGeo.lng.toFixed(6) + ' (±' + Math.round(lastGeo.accuracy) + 'м)' + warn2;
+}
+
+function startGeoWatch() {
+    if (geoWatchId != null) return;
+    updateGeoStatus();
+    if (!navigator.geolocation) return;
+    try {
+        geoWatchId = navigator.geolocation.watchPosition(
+            function (p) {
+                lastGeo = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, ts: Date.now() };
+                updateGeoStatus();
+            },
+            function (err) {
+                var msg = err && err.message ? err.message : (err && err.code ? ('код ' + err.code) : 'ошибка');
+                updateGeoStatus(msg);
+            },
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+        );
+    } catch (e) {
+        updateGeoStatus('ошибка geolocation');
+    }
 }
 
 // Проверка текущего заказа
@@ -516,6 +596,16 @@ if (elSwitch) elSwitch.addEventListener('click', function (e) {
 document.addEventListener('DOMContentLoaded', () => {
     loadUserInfo();
     loadDriverInfo();
+    startGeoWatch();
+    // Одноразовый запрос, чтобы браузер показал prompt на разрешение
+    getCurrentLocation(function () {});
+    var geoBtn = document.getElementById('geo-refresh-btn');
+    if (geoBtn) geoBtn.addEventListener('click', function () {
+        geoBtn.disabled = true;
+        updateGeoStatus('определяем…');
+        getCurrentLocation(function () { geoBtn.disabled = false; });
+        setTimeout(function () { geoBtn.disabled = false; }, 15000);
+    });
     var navPickup = document.getElementById('nav-to-pickup-btn');
     if (navPickup) navPickup.addEventListener('click', function () {
         if (!currentOrder || currentOrder.pickup_lat == null || currentOrder.pickup_lng == null) { alert('Нет точки подачи'); return; }

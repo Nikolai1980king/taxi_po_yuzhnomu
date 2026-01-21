@@ -1,3 +1,4 @@
+import os
 from flask import Flask, render_template, request, jsonify, session
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from config import Config
@@ -9,7 +10,9 @@ import time
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Для HTTPS в dev: eventlet не принимает ssl_context, поэтому используем threading/Werkzeug
+_async_mode = "threading" if os.environ.get("USE_HTTPS") == "1" else None
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=_async_mode)
 
 # Глобальная очередь водителей (ID водителей в порядке очереди)
 driver_queue = []
