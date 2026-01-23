@@ -16,6 +16,7 @@
                 <h1>🚕 Панель водителя</h1>
                 <div id="driver-info"></div>
                 <p class="role-switch"><a href="/">Главная</a> · <a href="#" id="switch-to-passenger">🚖 Заказать такси</a></p>
+                <div class="drivers-count" id="drivers-count-wrap" style="display:none;">Водителей онлайн: <strong id="drivers-online-count">0</strong></div>
             </header>
             
             <div class="status-section">
@@ -77,6 +78,6 @@
     
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>window.DRIVER_HAS_YANDEX = {{ 'true' if yandex_maps_api_key else 'false' }};</script>
-    <script src="{{ url_for('static', filename='js/driver.js') }}?v=9"></script>
+    <script src="{{ url_for('static', filename='js/driver.js') }}?v=13"></script>
 </body>
 </html>

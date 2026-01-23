@@ -320,6 +320,19 @@ document.getElementById('cancel-order-btn').addEventListener('click', function (
 });
 
 socket.on('connect', function () {});
+socket.on('queue_updated', function (d) {
+    applyDriversCount(d);
+});
+
+function applyDriversCount(d) {
+    var count = 0;
+    if (d && d.count != null) count = Number(d.count) || 0;
+    else if (d && Array.isArray(d.queue)) count = d.queue.length;
+    var wrap = document.getElementById('drivers-count-wrap');
+    var el = document.getElementById('drivers-online-count');
+    if (el) el.textContent = String(count);
+    if (wrap) wrap.style.display = count > 0 ? 'block' : 'none';
+}
 socket.on('order_assigned', function (d) { if (currentOrderId !== d.order_id) return; document.getElementById('status-text').textContent = 'Водитель назначен'; updateStatusStep('pending', false); updateStatusStep('assigned', true); });
 socket.on('order_accepted', function (d) { if (currentOrderId !== d.order_id) return; document.getElementById('status-text').textContent = 'Водитель принял'; updateStatusStep('assigned', false); updateStatusStep('accepted', true); document.getElementById('cancel-order-btn').style.display = 'none'; });
 socket.on('order_in_progress', function (d) { if (currentOrderId !== d.order_id) return; document.getElementById('status-text').textContent = 'В пути к месту назначения'; });
@@ -337,6 +350,17 @@ setInterval(function () {
         if (['completed','cancelled'].indexOf(d.status) >= 0) document.getElementById('cancel-order-btn').style.display = 'none';
     }).catch(function () {});
 }, 5000);
+
+fetch('/api/drivers/online_count').then(function (r) { return r.json(); }).then(function (d) {
+    applyDriversCount({ count: d && d.count != null ? d.count : 0 });
+}).catch(function () {});
+
+// Fallback: обновление счетчика, если socket-события пропали
+setInterval(function () {
+    fetch('/api/queue').then(function (r) { return r.json(); }).then(function (d) {
+        applyDriversCount(d);
+    }).catch(function () {});
+}, 3000);
 
 var elSwitchDriver = document.getElementById('switch-to-driver');
 if (elSwitchDriver) elSwitchDriver.addEventListener('click', function (e) {

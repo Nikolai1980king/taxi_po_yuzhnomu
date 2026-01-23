@@ -16,10 +16,42 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode=_async_mode)
 
 # Глобальная очередь водителей (ID водителей в порядке очереди)
 driver_queue = []
-queue_lock = threading.Lock()
+# Внутри очереди местами вызываются функции, которые тоже берут lock (например get_queue_snapshot()).
+# Поэтому используем RLock, чтобы избежать взаимной блокировки.
+queue_lock = threading.RLock()
 
 # Активные таймеры для заказов
 order_timers = {}
+
+def get_queue_snapshot():
+    """Единый источник правды по очереди: берём из БД (is_online + queue_position)."""
+    drivers = User.query.filter(User.role == UserRole.DRIVER, User.is_online == True).all()
+    drivers.sort(key=lambda u: (u.queue_position is None, u.queue_position or 0, u.id))
+    q = [u.id for u in drivers]
+
+    # Нормализуем queue_position в БД (1..N) — чтобы не было дублей/пропусков между процессами
+    changed = False
+    for idx, u in enumerate(drivers, 1):
+        if u.queue_position != idx:
+            u.queue_position = idx
+            changed = True
+    if changed:
+        db.session.commit()
+
+    # Синхронизируем локальную копию (может жить в нескольких процессах)
+    with queue_lock:
+        driver_queue.clear()
+        driver_queue.extend(q)
+
+    positions = {str(driver_id): idx for idx, driver_id in enumerate(q, 1)}
+    return {'queue': q, 'count': len(q), 'positions': positions}
+
+
+def emit_queue_updated(snapshot=None):
+    """Рассылка актуальной очереди/счетчиков всем клиентам."""
+    if snapshot is None:
+        snapshot = get_queue_snapshot()
+    socketio.emit('queue_updated', snapshot)
 
 
 def init_db():
@@ -30,53 +62,50 @@ def init_db():
 
 def add_driver_to_queue(driver_id):
     """Добавить водителя в очередь"""
+    # Всегда нормализуем и рассылаем обновление, даже если водитель уже "виден" в очереди по is_online.
+    # Иначе другие клиенты могут не получить событие и увидят обновления только после перезагрузки/поллинга.
     with queue_lock:
-        if driver_id not in driver_queue:
-            driver_queue.append(driver_id)
-            # Обновить позицию в БД
-            driver = User.query.get(driver_id)
-            if driver:
-                driver.queue_position = len(driver_queue)
+        snap = get_queue_snapshot()
+        driver = User.query.get(driver_id)
+        if driver and driver.is_online and driver.role == UserRole.DRIVER:
+            # Если по какой-то причине водитель не попал в snapshot — ставим в конец очереди
+            if driver_id not in snap['queue']:
+                driver.queue_position = len(snap['queue']) + 1
                 db.session.commit()
-            socketio.emit('queue_updated', {'queue': driver_queue}, broadcast=True)
+                snap = get_queue_snapshot()
+    emit_queue_updated(snap)
 
 
 def remove_driver_from_queue(driver_id):
     """Удалить водителя из очереди"""
     with queue_lock:
-        if driver_id in driver_queue:
-            driver_queue.remove(driver_id)
-            # Обновить позиции в БД
-            update_queue_positions()
-            socketio.emit('queue_updated', {'queue': driver_queue}, broadcast=True)
+        d = User.query.get(driver_id)
+        if d:
+            d.queue_position = None
+            db.session.commit()
+        # Нормализуем позиции для оставшихся
+        get_queue_snapshot()
+    emit_queue_updated()
 
 
 def update_queue_positions():
     """Обновить позиции водителей в очереди в БД"""
-    for idx, driver_id in enumerate(driver_queue, 1):
-        driver = User.query.get(driver_id)
-        if driver:
-            driver.queue_position = idx
-    db.session.commit()
+    # Устарело: позиции нормализуются через get_queue_snapshot()
+    get_queue_snapshot()
 
 
 def rebuild_driver_queue():
     """Восстановить очередь водителей из БД (после перезапуска сервера)"""
-    global driver_queue
     with app.app_context():
-        with queue_lock:
-            driver_queue.clear()
-            drivers = User.query.filter(User.role == UserRole.DRIVER, User.is_online == True).all()
-            drivers.sort(key=lambda u: (u.queue_position is None, u.queue_position or 0))
-            for u in drivers:
-                driver_queue.append(u.id)
-            update_queue_positions()
+        get_queue_snapshot()
+        emit_queue_updated()
 
 
 def assign_order_to_next_driver(order_id):
     """Назначить заказ следующему водителю в очереди"""
     with queue_lock:
-        if not driver_queue:
+        snap = get_queue_snapshot()
+        if not snap['queue']:
             return None
         
         order = Order.query.get(order_id)
@@ -85,7 +114,7 @@ def assign_order_to_next_driver(order_id):
         
         # Найти первого доступного водителя
         assigned_driver_id = None
-        for driver_id in driver_queue:
+        for driver_id in snap['queue']:
             driver = User.query.get(driver_id)
             if driver and driver.is_online and driver.is_active and not driver.current_order_id:
                 assigned_driver_id = driver_id
@@ -247,10 +276,10 @@ def driver_online():
     
     add_driver_to_queue(user_id)
     
-    # Обновить позицию после добавления в очередь
-    user = User.query.get(user_id)
-    
-    return jsonify({'status': 'online', 'queue_position': user.queue_position}), 200
+    # Позицию/счетчик берем из общего снимка очереди (единый источник правды)
+    snap = get_queue_snapshot()
+    pos = snap.get('positions', {}).get(str(user_id))
+    return jsonify({'status': 'online', 'queue_position': pos, 'drivers_online': snap.get('count', 0)}), 200
 
 
 @app.route('/api/driver/offline', methods=['POST'])
@@ -303,13 +332,34 @@ def get_current_user():
     if not user:
         return jsonify({'error': 'User not found'}), 404
     
+    drivers_online = None
+    queue_position = None
+    if user.role == UserRole.DRIVER:
+        snap = get_queue_snapshot()
+        drivers_online = snap.get('count', 0)
+        queue_position = snap.get('positions', {}).get(str(user.id))
+
     return jsonify({
         'user_id': user.id,
         'username': user.username,
         'role': user.role.value,
         'is_online': user.is_online if user.role == UserRole.DRIVER else None,
-        'queue_position': user.queue_position if user.role == UserRole.DRIVER else None
+        'queue_position': queue_position,
+        'drivers_online': drivers_online
     }), 200
+
+
+@app.route('/api/drivers/online_count', methods=['GET'])
+def drivers_online_count():
+    """Количество водителей онлайн (для счетчика на UI)."""
+    snap = get_queue_snapshot()
+    return jsonify({'count': snap['count']}), 200
+
+
+@app.route('/api/queue', methods=['GET'])
+def queue_snapshot():
+    """Снимок очереди (count + positions) — для поллинга на клиентах."""
+    return jsonify(get_queue_snapshot()), 200
 
 
 @app.route('/api/logout', methods=['POST'])

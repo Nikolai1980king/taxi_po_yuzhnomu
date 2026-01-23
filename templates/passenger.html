@@ -18,6 +18,7 @@
             <header class="panel-header panel-header--compact">
                 <h1>🚕 Заказ такси</h1>
                 <p class="role-switch"><a href="/">Главная</a> · <a href="#" id="switch-to-driver">🚕 Работа водителем</a></p>
+                <div class="drivers-count" id="drivers-count-wrap" style="display:none;">Водителей онлайн: <strong id="drivers-online-count">0</strong></div>
             </header>
             
             <div id="order-form-section">
@@ -73,6 +74,6 @@
     {% endif %}
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>window.USE_YANDEX = {{ 'true' if yandex_maps_api_key else 'false' }};</script>
-    <script src="{{ url_for('static', filename='js/passenger.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/passenger.js') }}?v=5"></script>
 </body>
 </html>

@@ -282,6 +282,9 @@ document.getElementById('toggle-status-btn').addEventListener('click', async () 
         statusText.textContent = 'Онлайн';
         btn.textContent = 'Выйти из линии';
         // очередь покажем после ответа (чтобы не мигало неверным значением)
+        // Запрос геолокации лучше делать по клику (user gesture) — так на телефонах надежнее
+        if (typeof updateGeoStatus === 'function') updateGeoStatus('определяем по клику…');
+        if (typeof getCurrentLocation === 'function') getCurrentLocation(function () {});
     } else {
         statusDot.classList.remove('online');
         statusDot.classList.add('offline');
@@ -303,6 +306,10 @@ document.getElementById('toggle-status-btn').addEventListener('click', async () 
                     queueInfo.style.display = 'block';
                 }
             }
+            // синхронизация очереди после успешного клика
+            fetch('/api/queue').then(function (r) { return r.json(); }).then(function (d) {
+                applyQueueUpdate(d);
+            }).catch(function () {});
         } else {
             // откат UI
             if (prev.dotOnline) {
@@ -522,6 +529,10 @@ function clearOrderTimer() {
 // WebSocket события
 socket.on('connect', () => {
     if (driverUserId) socket.emit('driver_register', { user_id: driverUserId });
+    // при переподключении синхронизируем очередь, даже если событие было пропущено
+    fetch('/api/queue').then(function (r) { return r.json(); }).then(function (d) {
+        applyQueueUpdate(d);
+    }).catch(function () {});
 });
 
 socket.on('new_order', function (data) {
@@ -547,8 +558,34 @@ socket.on('order_timeout', (data) => {
 });
 
 socket.on('queue_updated', (data) => {
-    console.log('Очередь обновлена:', data.queue);
+    try {
+        applyQueueUpdate(data);
+    } catch (e) {}
 });
+
+function applyQueueUpdate(data) {
+    var count = 0;
+    if (data && data.count != null) count = Number(data.count) || 0;
+    else if (data && Array.isArray(data.queue)) count = data.queue.length;
+
+    var countWrap = document.getElementById('drivers-count-wrap');
+    var countEl = document.getElementById('drivers-online-count');
+    if (countEl) countEl.textContent = String(count);
+    if (countWrap) countWrap.style.display = count > 0 ? 'block' : 'none';
+
+    // Очередь показываем тем, кто присутствует в positions (это и есть "на линии")
+    var qi = document.getElementById('queue-info');
+    var qp = document.getElementById('queue-position');
+    var pos = null;
+    if (data && data.positions && driverUserId) pos = data.positions[String(driverUserId)];
+    if (pos != null) {
+        if (qp) qp.textContent = String(pos);
+        if (qi) qi.style.display = 'block';
+    } else {
+        if (qp) qp.textContent = '-';
+        if (qi) qi.style.display = 'none';
+    }
+}
 
 // Загрузка информации о пользователе и подписка на заказы
 async function loadUserInfo() {
@@ -575,6 +612,10 @@ async function loadUserInfo() {
                         if (queueInfo) queueInfo.style.display = 'block';
                     }
                 }
+                // сразу подтянуть актуальную очередь/позицию
+                fetch('/api/queue').then(function (r) { return r.json(); }).then(function (d) {
+                    applyQueueUpdate(d);
+                }).catch(function () {});
             }
         }
     } catch (e) {
@@ -597,8 +638,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadUserInfo();
     loadDriverInfo();
     startGeoWatch();
-    // Одноразовый запрос, чтобы браузер показал prompt на разрешение
-    getCurrentLocation(function () {});
     var geoBtn = document.getElementById('geo-refresh-btn');
     if (geoBtn) geoBtn.addEventListener('click', function () {
         geoBtn.disabled = true;
@@ -616,6 +655,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentOrder || currentOrder.destination_lat == null || currentOrder.destination_lng == null) { alert('Нет точки назначения'); return; }
         openNavigatorTo({ lat: currentOrder.destination_lat, lng: currentOrder.destination_lng });
     });
+    fetch('/api/queue').then(function (r) { return r.json(); }).then(function (d) {
+        applyQueueUpdate(d);
+    }).catch(function () {});
+
+    // Fallback: если socket-событие не дошло (телефон "уснул"/потерял websocket),
+    // периодически подтягиваем актуальное состояние.
+    setInterval(function () {
+        fetch('/api/queue').then(function (r) { return r.json(); }).then(function (d) {
+            applyQueueUpdate(d);
+        }).catch(function () {});
+    }, 3000);
     setInterval(() => {
         if (!currentOrder) checkCurrentOrder();
     }, 5000);
